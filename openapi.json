@@ -1,0 +1,135 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "srvcs-percentile",
+    "description": "",
+    "license": {
+      "name": "Apache-2.0",
+      "identifier": "Apache-2.0"
+    },
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/": {
+      "get": {
+        "tags": [],
+        "summary": "`GET /` — service identity (srvcs service standard).",
+        "operationId": "index",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Info"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [],
+        "summary": "`POST /` — compute the `p`-th percentile of `values` via linear interpolation.",
+        "description": "This service does no arithmetic of its own. It asks `srvcs-sortascending` to\nsort the list, then computes the interpolation rank locally and delegates the\nreal-valued steps — `sorted[lo+1] - sorted[lo]`, `frac * diff`, and\n`sorted[lo] + scaled` — to `srvcs-floatsubtract`, `srvcs-floatmultiply`, and\n`srvcs-floatadd` respectively. Invalid input is rejected by a leaf dependency\nand the resulting `422` is forwarded unchanged.",
+        "operationId": "evaluate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvalRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PercentileResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "the list is empty, or an element is not a valid integer (forwarded)"
+          },
+          "500": {
+            "description": "a dependency returned an unusable response"
+          },
+          "503": {
+            "description": "a dependency is unavailable"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "EvalRequest": {
+        "type": "object",
+        "required": [
+          "values",
+          "p"
+        ],
+        "properties": {
+          "p": {
+            "type": "number",
+            "format": "double",
+            "description": "The percentile to compute, in `0..=100`."
+          },
+          "values": {
+            "type": "object",
+            "description": "The list of integers to take the percentile of. Must be non-empty."
+          }
+        }
+      },
+      "Info": {
+        "type": "object",
+        "required": [
+          "service",
+          "concern",
+          "depends_on"
+        ],
+        "properties": {
+          "concern": {
+            "type": "string"
+          },
+          "depends_on": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "service": {
+            "type": "string"
+          }
+        }
+      },
+      "PercentileResponse": {
+        "type": "object",
+        "required": [
+          "values",
+          "p",
+          "result"
+        ],
+        "properties": {
+          "p": {
+            "type": "number",
+            "format": "double"
+          },
+          "result": {
+            "type": "number",
+            "format": "double"
+          },
+          "values": {
+            "type": "object"
+          }
+        }
+      }
+    }
+  }
+}
