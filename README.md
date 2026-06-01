@@ -1,73 +1,73 @@
 # srvcs-percentile
 
-The percentile orchestrator of the srvcs.cloud distributed standard library.
+## Name
 
-Its single concern: the **`p`-th percentile of a list**, computed by linear
-interpolation between order statistics. It does no arithmetic of its own. It
-asks [`srvcs-sortascending`](https://github.com/srvcs/sortascending) to sort the
-list, computes the interpolation rank locally, then delegates the real-valued
-steps to the float primitives:
+| Field | Value |
+| --- | --- |
+| Service | `srvcs-percentile` |
+| Slug | `percentile` |
+| Repository | `srvcs/percentile` |
+| Package | `srvcs-percentile` |
+| Kind | `orchestrator` |
 
-1. `sorted = sortascending(values)`
-2. `idx = (p / 100) * (n - 1)`, `lo = floor(idx)`, `frac = idx - lo` (local)
-3. if `lo + 1 >= n`: `result = sorted[lo]`
-4. otherwise:
-   - `diff = floatsubtract(sorted[lo+1], sorted[lo])`
-   - `scaled = floatmultiply(frac, diff)`
-   - `result = floatadd(sorted[lo], scaled)`
+## Function
 
-For example, `percentile([1, 2, 3, 4], 50) = 2.5`.
+comparison: p-th percentile of a list (linear interpolation)
 
-Input validation propagates from the leaves: if the list is empty this service
-rejects it with `422`; if an element is not a valid integer, a dependency
-rejects it with `422` and this service forwards that rejection unchanged.
+## Dependencies
+
+| Dependency | Repository |
+| --- | --- |
+| `srvcs-sortascending` | [srvcs/sortascending](https://github.com/srvcs/sortascending) |
+| `srvcs-floatadd` | [srvcs/floatadd](https://github.com/srvcs/floatadd) |
+| `srvcs-floatmultiply` | [srvcs/floatmultiply](https://github.com/srvcs/floatmultiply) |
+| `srvcs-floatsubtract` | [srvcs/floatsubtract](https://github.com/srvcs/floatsubtract) |
 
 ## API
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/` | Service identity, concern, and dependency list |
-| `POST` | `/` | Compute the `p`-th percentile of `values` |
-| `GET` | `/healthz` `/readyz` `/metrics` `/openapi.json` | srvcs service standard surface |
+| `GET` | `/` | Service identity |
+| `POST` | `/` | Evaluate the service function |
+| `GET` | `/healthz` | Liveness probe |
+| `GET` | `/readyz` | Readiness probe |
+| `GET` | `/metrics` | Prometheus metrics |
+| `GET` | `/openapi.json` | OpenAPI document |
 
-```sh
-curl -s -X POST localhost:8080/ -H 'content-type: application/json' \
-  -d '{"values": [1, 2, 3, 4], "p": 50}'
-# {"values":[1,2,3,4],"p":50.0,"result":2.5}
-```
+## Inputs
 
-Responses:
+| Name | Type | Required |
+| --- | --- | --- |
+| `values` | `json[]` | yes |
+| `p` | `number` | yes |
 
-- `200 {"values": [...], "p": p, "result": r}` — evaluated (`result` is a float).
-- `422` — empty list, or an invalid element forwarded from a leaf dependency.
-- `500` — a dependency returned an unusable response.
-- `503` — a dependency is unavailable.
+## Outputs
 
-## Dependencies
-
-- [`srvcs-sortascending`](https://github.com/srvcs/sortascending)
-- [`srvcs-floatadd`](https://github.com/srvcs/floatadd)
-- [`srvcs-floatmultiply`](https://github.com/srvcs/floatmultiply)
-- [`srvcs-floatsubtract`](https://github.com/srvcs/floatsubtract)
-
-A single request here fans out across the dependency graph: percentile asks
-`srvcs-sortascending` for the sorted list, then `srvcs-floatsubtract`,
-`srvcs-floatmultiply`, and `srvcs-floatadd` to interpolate between the bracketing
-order statistics.
+| Name | Type |
+| --- | --- |
+| `values` | `json[]` |
+| `p` | `number` |
+| `result` | `number` |
 
 ## Configuration
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `SRVCS_BIND_ADDR` | `0.0.0.0:8080` | Bind address |
-| `SRVCS_SORTASCENDING_URL` | `http://127.0.0.1:8090` | Base URL of `srvcs-sortascending` |
-| `SRVCS_FLOATADD_URL` | `http://127.0.0.1:8091` | Base URL of `srvcs-floatadd` |
-| `SRVCS_FLOATMULTIPLY_URL` | `http://127.0.0.1:8092` | Base URL of `srvcs-floatmultiply` |
-| `SRVCS_FLOATSUBTRACT_URL` | `http://127.0.0.1:8093` | Base URL of `srvcs-floatsubtract` |
 | `SRVCS_ENV` | `development` | Environment label for logs |
 | `RUST_LOG` | `info,tower_http=info` | Tracing filter |
+| `SRVCS_FLOATADD_URL` | `http://127.0.0.1:8091` | Base URL for srvcs-floatadd |
+| `SRVCS_FLOATMULTIPLY_URL` | `` | Base URL for srvcs-floatmultiply |
+| `SRVCS_FLOATSUBTRACT_URL` | `` | Base URL for srvcs-floatsubtract |
+| `SRVCS_SORTASCENDING_URL` | `` | Base URL for srvcs-sortascending |
 
-## Local checks
+## Error Behavior
+
+- `422` means the request could not be evaluated for the documented input shape.
+- `503` means a required dependency was unavailable or returned an unexpected response.
+- Dependency validation errors are forwarded when this service delegates validation.
+
+## Local Checks
 
 ```sh
 cargo fmt --check
@@ -75,12 +75,8 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
-Orchestration tests stand up mock dependency services in-process that actually
-compute (sortascending sorts, floatsubtract subtracts, floatmultiply multiplies,
-floatadd adds), so the interpolation is genuinely exercised against the asserted
-cases with a `1e-9` tolerance. They also cover an empty-list `422`, a forwarded
-`422`, and a degraded dependency (`503`). See
-[`srvcs/platform`](https://github.com/srvcs/platform) for the shared standard.
+See the [srvcs service standard](https://github.com/srvcs/platform/blob/main/STANDARD.md) for the full operational contract.
 
-> Note: the `cargoHash` in `flake.nix` is inherited from the template and must be
-> refreshed with a `nix build` before the Nix gates pass.
+## Metadata
+
+Machine-readable service metadata lives in `srvcs.yaml`. Keep it aligned with this README when the service contract changes.
